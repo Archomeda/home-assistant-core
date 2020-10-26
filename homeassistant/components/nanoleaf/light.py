@@ -1,8 +1,6 @@
 """Support for Nanoleaf Lights."""
-import logging
 
-from pynanoleaf import Nanoleaf, Unavailable
-import voluptuous as vol
+import logging
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -10,7 +8,6 @@ from homeassistant.components.light import (
     ATTR_EFFECT,
     ATTR_HS_COLOR,
     ATTR_TRANSITION,
-    PLATFORM_SCHEMA,
     SUPPORT_BRIGHTNESS,
     SUPPORT_COLOR,
     SUPPORT_COLOR_TEMP,
@@ -18,110 +15,59 @@ from homeassistant.components.light import (
     SUPPORT_TRANSITION,
     LightEntity,
 )
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_TOKEN
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.util import color as color_util
 from homeassistant.util.color import (
     color_temperature_mired_to_kelvin as mired_to_kelvin,
 )
-from homeassistant.util.json import load_json, save_json
+
+from pynanoleaf import Nanoleaf, Unavailable
+
+from .const import DOMAIN, DATA_NAME, DATA_NANOLEAF
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_NAME = "Nanoleaf"
-
-DATA_NANOLEAF = "nanoleaf"
-
-CONFIG_FILE = ".nanoleaf.conf"
-
-ICON = "mdi:triangle-outline"
+ICON_TRIANGLE = "mdi:triangle-outline"
+ICON_SQUARE = "mdi:square-outline"
+ICON_HEXAGON = "mdi:hexagon-outline"
 
 SUPPORT_NANOLEAF = (
     SUPPORT_BRIGHTNESS
+    | SUPPORT_COLOR
     | SUPPORT_COLOR_TEMP
     | SUPPORT_EFFECT
-    | SUPPORT_COLOR
     | SUPPORT_TRANSITION
 )
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_TOKEN): cv.string,
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    }
-)
 
+async def async_setup_entry(
+    hass: HomeAssistant, config: ConfigEntry, async_add_entities
+):
+    """Set up Nanoleaf lights."""
+    data = hass.data[DOMAIN][config.entry_id]
+    nanoleaf = data[DATA_NANOLEAF]
+    name = data[DATA_NAME]
 
-def setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the Nanoleaf light."""
-
-    if DATA_NANOLEAF not in hass.data:
-        hass.data[DATA_NANOLEAF] = {}
-
-    token = ""
-    if discovery_info is not None:
-        host = discovery_info["host"]
-        name = None
-        device_id = discovery_info["properties"]["id"]
-
-        # if device already exists via config, skip discovery setup
-        if host in hass.data[DATA_NANOLEAF]:
-            return
-        _LOGGER.info("Discovered a new Nanoleaf: %s", discovery_info)
-        conf = load_json(hass.config.path(CONFIG_FILE))
-        if host in conf and device_id not in conf:
-            conf[device_id] = conf.pop(host)
-            save_json(hass.config.path(CONFIG_FILE), conf)
-        token = conf.get(device_id, {}).get("token", "")
-    else:
-        host = config[CONF_HOST]
-        name = config[CONF_NAME]
-        token = config[CONF_TOKEN]
-
-    nanoleaf_light = Nanoleaf(host)
-
-    if not token:
-        token = nanoleaf_light.request_token()
-        if not token:
-            _LOGGER.error(
-                "Could not generate the auth token, did you press "
-                "and hold the power button on %s"
-                "for 5-7 seconds?",
-                name,
-            )
-            return
-        conf = load_json(hass.config.path(CONFIG_FILE))
-        conf[host] = {"token": token}
-        save_json(hass.config.path(CONFIG_FILE), conf)
-
-    nanoleaf_light.token = token
-
-    try:
-        info = nanoleaf_light.info
-    except Unavailable:
-        _LOGGER.error("Could not connect to Nanoleaf Light: %s on %s", name, host)
-        return
-
-    if name is None:
-        name = info.name
-
-    hass.data[DATA_NANOLEAF][host] = nanoleaf_light
-    add_entities([NanoleafLight(nanoleaf_light, name)], True)
+    async_add_entities([NanoleafLight(nanoleaf, name)], True)
 
 
 class NanoleafLight(LightEntity):
     """Representation of a Nanoleaf Light."""
 
-    def __init__(self, light, name):
+    def __init__(self, light: Nanoleaf, name: str):
         """Initialize an Nanoleaf light."""
-        self._unique_id = light.serialNo
+        self._unique_id = None
         self._available = True
         self._brightness = None
         self._color_temp = None
         self._effect = None
         self._effects_list = None
+        self._firmwareVersion = None
         self._light = light
+        self._manufacturer = None
+        self._model = None
         self._name = name
         self._hs_color = None
         self._state = None
@@ -144,6 +90,17 @@ class NanoleafLight(LightEntity):
         if self._color_temp is not None:
             return color_util.color_temperature_kelvin_to_mired(self._color_temp)
         return None
+
+    @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(DOMAIN, self.unique_id)},
+            "name": self.name,
+            "manufacturer": self._manufacturer,
+            "model": self._model,
+            "sw_version": self._firmwareVersion,
+        }
 
     @property
     def effect(self):
@@ -178,7 +135,11 @@ class NanoleafLight(LightEntity):
     @property
     def icon(self):
         """Return the icon to use in the frontend, if any."""
-        return ICON
+        if self._model == "NL29":
+            return ICON_SQUARE
+        elif self._model == "NL42":
+            return ICON_HEXAGON
+        return ICON_TRIANGLE
 
     @property
     def is_on(self):
@@ -241,22 +202,34 @@ class NanoleafLight(LightEntity):
         """Fetch new state data for this light."""
 
         try:
-            self._available = self._light.available
-            self._brightness = self._light.brightness
-            self._effects_list = self._light.effects
+            info = self._light.info
+            self._available = True
+
+            self._firmwareVersion = info["firmwareVersion"]
+            self._manufacturer = info["manufacturer"]
+            self._model = info["model"]
+            self._unique_id = info["serialNo"]
+
+            self._brightness = info["state"]["brightness"]["value"]
+            self._effects_list = info["effects"]["effectsList"]
             # Nanoleaf api returns non-existent effect named "*Solid*" when light set to solid color.
             # This causes various issues with scening (see https://github.com/home-assistant/core/issues/36359).
             # Until fixed at the library level, we should ensure the effect exists before saving to light properties
             self._effect = (
-                self._light.effect if self._light.effect in self._effects_list else None
+                info["effects"]["select"]
+                if info["effects"]["select"] in self._effects_list
+                else None
             )
             if self._effect is None:
-                self._color_temp = self._light.color_temperature
-                self._hs_color = self._light.hue, self._light.saturation
+                self._color_temp = info["state"]["ct"]["value"]
+                self._hs_color = (
+                    info["state"]["hue"]["value"],
+                    info["state"]["sat"]["value"],
+                )
             else:
                 self._color_temp = None
                 self._hs_color = None
-            self._state = self._light.on
+            self._state = info["state"]["on"]["value"]
         except Unavailable as err:
             _LOGGER.error("Could not update status for %s (%s)", self.name, err)
             self._available = False

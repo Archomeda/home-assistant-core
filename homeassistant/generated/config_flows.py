@@ -148,6 +148,7 @@ FLOWS = [
     "mullvad",
     "myq",
     "mysensors",
+    "nanoleaf",
     "neato",
     "nest",
     "netatmo",

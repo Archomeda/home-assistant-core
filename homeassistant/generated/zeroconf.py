@@ -119,6 +119,11 @@ ZEROCONF = {
             "domain": "xiaomi_miio"
         }
     ],
+    "_nanoleafapi._tcp.local.": [
+        {
+            "domain": "nanoleaf"
+        }
+    ],
     "_nut._tcp.local.": [
         {
             "domain": "nut"

@@ -1,0 +1,14 @@
+{
+    "config": {
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "failed_to_request_token": "Failed to request token. Make sure to hold the power button for 5 to 7 seconds before continuing."
+        },
+        "flow_title": "Nanoleaf: {name}",
+        "step": {
+            "zeroconf_confirm": {
+                "description": "Hold down the power button of your Nanoleaf \"{name}\" for 5 to 7 seconds.\nContinue once the LED starts flashing."
+            }
+        }
+    }
+}

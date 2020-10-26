@@ -1,7 +1,13 @@
 {
   "domain": "nanoleaf",
   "name": "Nanoleaf",
+  "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/nanoleaf",
-  "requirements": ["pynanoleaf==0.1.0"],
+  "requirements": [
+    "pynanoleaf==0.1.0"
+  ],
+  "zeroconf": [
+    "_nanoleafapi._tcp.local."
+  ],
   "codeowners": []
 }

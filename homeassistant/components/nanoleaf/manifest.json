@@ -9,5 +9,8 @@
   "zeroconf": [
     "_nanoleafapi._tcp.local."
   ],
-  "codeowners": []
+  "codeowners": [],
+  "dependencies": [],
+  "issue_tracker": "https://example.com",
+  "version": "0.0.0"
 }
